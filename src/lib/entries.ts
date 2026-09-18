@@ -13,16 +13,16 @@ export const foodCategories = [
   { value: "other", label: "Annet" },
 ] as const;
 
-export const mealTypes = ["breakfast", "lunch", "dinner", "snack"] as const;
 export const bowelTypes = ["normal", "hard", "loose"] as const;
 
 export type FoodCategory = (typeof foodCategories)[number]["value"];
-export type MealType = (typeof mealTypes)[number];
 export type BowelType = (typeof bowelTypes)[number];
-export const mealLabels: Record<MealType, string> = { breakfast: "Frokost", lunch: "Lunsj", dinner: "Middag", snack: "Mellommåltid" };
 export const bowelLabels: Record<BowelType, string> = { normal: "Normal", hard: "Hard", loose: "Løs" };
-export const kindLabels = { symptom: "Symptomer", meal: "Måltid", bowel: "Avføring" } as const;
+export const kindLabels = { symptom: "Symptomer", food: "Mat siste døgn", bowel: "Avføring" } as const;
 export const symptomLabels = { pain: "Magesmerter", nausea: "Kvalme", headache: "Hodepine" } as const;
+export const durationLabels = { under_30m: "Under 30 min", "30m_2h": "30 min–2 timer", "2h_6h": "2–6 timer", over_6h: "Over 6 timer" } as const;
+export const impactLabels = { usual: "Som vanlig", breaks: "Trenger pauser", stopped: "Må avbryte aktivitet" } as const;
+export const locationLabels = { navel: "Rundt navlen", upper: "Øverst i magen", lower: "Nederst i magen", right: "Høyre side", left: "Venstre side", diffuse: "Flere steder / hele magen" } as const;
 export function foodLabel(value: FoodCategory) {
   return foodCategories.find((item) => item.value === value)!.label;
 }
@@ -33,11 +33,13 @@ export type SymptomPayload = {
   headache: Severity;
   vomited: boolean;
   fever: boolean;
+  duration?: keyof typeof durationLabels;
+  impact?: keyof typeof impactLabels;
+  location?: keyof typeof locationLabels;
   note: string;
 };
 
-export type MealPayload = {
-  mealType: MealType;
+export type FoodPayload = {
   categories: FoodCategory[];
   note: string;
 };
@@ -49,12 +51,11 @@ export type BowelPayload = {
 
 export type Entry =
   | { id: string; kind: "symptom"; occurredAt: string; payload: SymptomPayload }
-  | { id: string; kind: "meal"; occurredAt: string; payload: MealPayload }
+  | { id: string; kind: "food"; occurredAt: string; payload: FoodPayload }
   | { id: string; kind: "bowel"; occurredAt: string; payload: BowelPayload };
 
 const validSeverities = new Set<string>(severityLevels);
 const validFoods = new Set<string>(foodCategories.map((item) => item.value));
-const validMeals = new Set<string>(mealTypes);
 const validBowels = new Set<string>(bowelTypes);
 
 export class EntryValidationError extends Error {}
@@ -103,6 +104,13 @@ function severityFrom(formData: FormData, key: keyof typeof symptomLabels): Seve
   return value as Severity;
 }
 
+function optionalChoice<T extends Record<string, string>>(formData: FormData, key: string, labels: T): keyof T | undefined {
+  const value = formData.get(key);
+  if (value === null || value === "") return undefined;
+  if (typeof value !== "string" || !Object.hasOwn(labels, value)) throw new EntryValidationError("Velg et gyldig alternativ i valgfrie detaljer.");
+  return value as keyof T;
+}
+
 export function parseEntry(formData: FormData, now = new Date()): Entry {
   const kind = requiredString(formData.get("kind"), "en type registrering");
   const occurredAt = occurredAtFrom(formData, now);
@@ -120,14 +128,15 @@ export function parseEntry(formData: FormData, now = new Date()): Entry {
         headache: severityFrom(formData, "headache"),
         vomited: formData.get("vomited") === "on",
         fever: formData.get("fever") === "on",
+        duration: optionalChoice(formData, "duration", durationLabels),
+        impact: optionalChoice(formData, "impact", impactLabels),
+        location: optionalChoice(formData, "location", locationLabels),
         note,
       },
     };
   }
 
-  if (kind === "meal") {
-    const mealType = requiredString(formData.get("mealType"), "et måltid");
-    if (!validMeals.has(mealType)) throw new EntryValidationError("Velg et gyldig måltid.");
+  if (kind === "food") {
     const categories = formData.getAll("categories");
     if (!categories.length || categories.some((value) => typeof value !== "string" || !validFoods.has(value))) {
       throw new EntryValidationError("Velg minst én matvaregruppe.");
@@ -137,7 +146,6 @@ export function parseEntry(formData: FormData, now = new Date()): Entry {
       kind,
       occurredAt,
       payload: {
-        mealType: mealType as MealType,
         categories: [...new Set(categories as FoodCategory[])],
         note,
       },
@@ -160,10 +168,14 @@ export function summarizeEntry(entry: Entry) {
       .map((key) => `${symptomLabels[key]} · ${severityLabels[entry.payload[key]].toLowerCase()}`);
     if (entry.payload.vomited) parts.push("Kastet opp");
     if (entry.payload.fever) parts.push("Feber");
-    return parts.length ? parts.join("  •  ") : "Ingen symptomer";
+    if (!parts.length) parts.push("Ingen kvalme, magesmerter eller hodepine");
+    if (entry.payload.duration) parts.push(`Varighet så langt: ${durationLabels[entry.payload.duration]}`);
+    if (entry.payload.impact) parts.push(`Aktivitet: ${impactLabels[entry.payload.impact]}`);
+    if (entry.payload.location) parts.push(`Smertested: ${locationLabels[entry.payload.location]}`);
+    return parts.join("  •  ");
   }
-  if (entry.kind === "meal") {
-    return `${mealLabels[entry.payload.mealType]} · ${entry.payload.categories.map(foodLabel).join(", ")}`;
+  if (entry.kind === "food") {
+    return entry.payload.categories.map(foodLabel).join(", ");
   }
   return `Avføring · ${bowelLabels[entry.payload.bowelType].toLowerCase()}`;
 }

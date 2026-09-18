@@ -6,13 +6,14 @@ describe("CSV export", () => {
   it("quotes notes and neutralizes spreadsheet formulas", () => {
     const entry: Entry = {
       id: "1",
-      kind: "meal",
+      kind: "food",
       occurredAt: "2026-09-16T08:00:00.000Z",
-      payload: { mealType: "breakfast", categories: ["grains", "dairy"], note: '=HYPERLINK("https://example.test","click")' },
+      payload: { categories: ["grains", "dairy"], note: '=HYPERLINK("https://example.test","click")' },
     };
     const csv = entriesToCsv([entry]);
     expect(csv.startsWith("\uFEFF\"Tidspunkt (UTC)\"")).toBe(true);
-    expect(csv).toContain('"Frokost","Kornprodukter; Meieriprodukter"');
+    expect(csv).toContain('"Mat siste døgn","Kornprodukter, Meieriprodukter"');
+    expect(csv).toContain('"Kornprodukter; Meieriprodukter"');
     expect(csv).toContain('"\'=HYPERLINK(""https://example.test"",""click"")"');
   });
   it("exports localized codes and yes values", () => {

@@ -38,11 +38,12 @@ describe("entry validation", () => {
     expect(() => parseEntry(form({ ...basics, occurredAt: "2024-02-29T10:00:00Z" }), now)).not.toThrow();
   });
 
-  it("requires a meal category and removes duplicate categories", () => {
-    const basics = { kind: "meal", occurredAt: "2026-09-16T08:00:00Z", mealType: "breakfast" };
+  it("requires a food group from the last day and removes duplicates", () => {
+    const basics = { kind: "food", occurredAt: "2026-09-16T08:00:00Z" };
     expect(() => parseEntry(form(basics), now)).toThrow("minst én matvaregruppe");
+    expect(() => parseEntry(form({ ...basics, categories: ["invalid"] }), now)).toThrow("minst én matvaregruppe");
     const entry = parseEntry(form({ ...basics, categories: ["grains", "dairy", "grains"] }), now);
-    if (entry.kind === "meal") expect(entry.payload.categories).toEqual(["grains", "dairy"]);
+    if (entry.kind === "food") expect(entry.payload).toEqual({ categories: ["grains", "dairy"], note: "" });
   });
 
   it("requires a known bowel type and limits note length", () => {
@@ -55,11 +56,11 @@ describe("entry validation", () => {
 describe("Norwegian summaries", () => {
   it("labels symptoms, food groups, and bowel movements without changing stored codes", () => {
     const symptoms = parseEntry(form({ kind: "symptom", occurredAt: "2026-09-16T08:00:00Z", pain: "mild", nausea: "medium", headache: "none", vomited: "on" }), now);
-    const meal = parseEntry(form({ kind: "meal", occurredAt: "2026-09-16T08:00:00Z", mealType: "breakfast", categories: ["grains", "dairy"] }), now);
+    const food = parseEntry(form({ kind: "food", occurredAt: "2026-09-16T08:00:00Z", categories: ["grains", "dairy"], note: "  yoghurt  " }), now);
     const bowel = parseEntry(form({ kind: "bowel", occurredAt: "2026-09-16T08:00:00Z", bowelType: "loose" }), now);
     expect(summarizeEntry(symptoms)).toBe("Magesmerter · lett  •  Kvalme · moderat  •  Kastet opp");
-    expect(summarizeEntry(meal)).toBe("Frokost · Kornprodukter, Meieriprodukter");
+    expect(summarizeEntry(food)).toBe("Kornprodukter, Meieriprodukter");
     expect(summarizeEntry(bowel)).toBe("Avføring · løs");
-    if (meal.kind === "meal") expect(meal.payload.mealType).toBe("breakfast");
+    if (food.kind === "food") expect(food.payload).toEqual({ categories: ["grains", "dairy"], note: "yoghurt" });
   });
 });

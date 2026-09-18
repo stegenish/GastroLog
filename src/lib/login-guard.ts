@@ -14,32 +14,22 @@ async function clientKey() {
   return createHmac("sha256", secret).update(ip).digest("hex");
 }
 
-export async function loginIsBlocked() {
+export async function claimLoginAttempt() {
   const key = await clientKey();
-  if (usesLocalStorage()) return localLimiter.isBlocked(key);
-  const rows = await database()`SELECT locked_until > now() AS blocked FROM login_attempts WHERE ip_hash = ${key}`;
-  return rows[0]?.blocked === true;
-}
-
-export async function recordFailedLogin() {
-  const key = await clientKey();
-  if (usesLocalStorage()) {
-    localLimiter.recordFailure(key);
-    return;
-  }
-  await database()`INSERT INTO login_attempts (ip_hash, failures, updated_at, locked_until)
-    VALUES (${key}, 1, now(), NULL)
+  if (usesLocalStorage()) return localLimiter.claim(key);
+  const rows = await database()`INSERT INTO login_attempts (ip_hash, attempts, updated_at)
+    VALUES (${key}, 1, now())
     ON CONFLICT (ip_hash) DO UPDATE SET
-      failures = CASE WHEN login_attempts.updated_at < now() - interval '15 minutes' THEN 1 ELSE login_attempts.failures + 1 END,
-      updated_at = now(),
-      locked_until = CASE
-        WHEN login_attempts.updated_at < now() - interval '15 minutes' THEN NULL
-        WHEN login_attempts.failures + 1 >= 5 THEN now() + interval '15 minutes'
-        ELSE NULL
-      END`;
+      attempts = CASE
+        WHEN login_attempts.updated_at <= now() - interval '15 minutes' THEN 1
+        ELSE LEAST(login_attempts.attempts + 1, 6)
+      END,
+      updated_at = now()
+    RETURNING attempts`;
+  return rows[0]?.attempts !== undefined && Number(rows[0].attempts) <= 5;
 }
 
-export async function clearFailedLogins() {
+export async function clearLoginAttempts() {
   const key = await clientKey();
   if (usesLocalStorage()) {
     localLimiter.clear(key);

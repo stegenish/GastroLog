@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createLoginLimiter } from "@/lib/login-limiter";
 
 const mocks = vi.hoisted(() => ({
   isAuthenticated: vi.fn(),
@@ -7,9 +8,8 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   passwordMatches: vi.fn(),
   setSessionCookie: vi.fn(),
-  loginIsBlocked: vi.fn(),
-  recordFailedLogin: vi.fn(),
-  clearFailedLogins: vi.fn(),
+  claimLoginAttempt: vi.fn(),
+  clearLoginAttempts: vi.fn(),
   redirect: vi.fn(),
 }));
 
@@ -20,9 +20,8 @@ vi.mock("@/lib/auth", () => ({
   passwordMatches: mocks.passwordMatches,
 }));
 vi.mock("@/lib/login-guard", () => ({
-  loginIsBlocked: mocks.loginIsBlocked,
-  recordFailedLogin: mocks.recordFailedLogin,
-  clearFailedLogins: mocks.clearFailedLogins,
+  claimLoginAttempt: mocks.claimLoginAttempt,
+  clearLoginAttempts: mocks.clearLoginAttempts,
 }));
 vi.mock("@/lib/store", () => ({ saveEntry: mocks.saveEntry, removeEntry: mocks.removeEntry }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
@@ -47,9 +46,8 @@ beforeEach(() => {
   mocks.isAuthenticated.mockResolvedValue(false);
   mocks.saveEntry.mockResolvedValue(undefined);
   mocks.removeEntry.mockResolvedValue(undefined);
-  mocks.loginIsBlocked.mockResolvedValue(false);
-  mocks.recordFailedLogin.mockResolvedValue(undefined);
-  mocks.clearFailedLogins.mockResolvedValue(undefined);
+  mocks.claimLoginAttempt.mockResolvedValue(true);
+  mocks.clearLoginAttempts.mockResolvedValue(undefined);
   mocks.setSessionCookie.mockResolvedValue(undefined);
   mocks.passwordMatches.mockReturnValue(false);
 });
@@ -62,19 +60,27 @@ describe("sign-in action", () => {
   }
 
   it("does not compare credentials while a client is blocked", async () => {
-    mocks.loginIsBlocked.mockResolvedValue(true);
+    mocks.claimLoginAttempt.mockResolvedValue(false);
     expect(await loginAction({ error: "" }, loginForm())).toEqual({ error: "For mange forsøk. Prøv igjen om 15 minutter." });
     expect(mocks.passwordMatches).not.toHaveBeenCalled();
   });
 
-  it("records a failed passphrase and clears failures on success", async () => {
+  it("reserves a check and clears reservations on success", async () => {
     expect(await loginAction({ error: "" }, loginForm())).toEqual({ error: "Feil passord. Prøv igjen." });
-    expect(mocks.recordFailedLogin).toHaveBeenCalledOnce();
+    expect(mocks.claimLoginAttempt).toHaveBeenCalledOnce();
     mocks.passwordMatches.mockReturnValue(true);
     await loginAction({ error: "" }, loginForm());
-    expect(mocks.clearFailedLogins).toHaveBeenCalledOnce();
+    expect(mocks.clearLoginAttempts).toHaveBeenCalledOnce();
     expect(mocks.setSessionCookie).toHaveBeenCalledOnce();
     expect(mocks.redirect).toHaveBeenCalledWith("/");
+  });
+
+  it("does not check more than five concurrent passwords from one client", async () => {
+    const limiter = createLoginLimiter(() => 1_000_000);
+    mocks.claimLoginAttempt.mockImplementation(async () => limiter.claim("one"));
+    const results = await Promise.all(Array.from({ length: 20 }, () => loginAction({ error: "" }, loginForm())));
+    expect(mocks.passwordMatches).toHaveBeenCalledTimes(5);
+    expect(results.filter((result) => result.error?.includes("For mange"))).toHaveLength(15);
   });
 });
 

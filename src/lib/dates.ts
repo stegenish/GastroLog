@@ -12,6 +12,12 @@ export function localDateTimeOnDay(day: string, now: Date) {
   return `${day}${localDateTime(now).slice(10)}`;
 }
 
+export function parseLocalDateTime(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return undefined;
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime()) && localDateTime(date) === value ? date : undefined;
+}
+
 export function entryTimeForSubmission(when: string, touched: boolean, initialDay: string | undefined, now: Date) {
   return touched ? when : initialDay ? localDateTimeOnDay(initialDay, now) : localDateTime(now);
 }
@@ -38,24 +44,24 @@ export function hasSymptoms(entry: Extract<Entry, { kind: "symptom" }>) {
 export function getWeekOverview(entries: Entry[], today: string) {
   const days = Array.from({ length: 7 }, (_, index) => ({
     key: shiftDate(today, index - 6),
-    checkins: 0,
+    registrations: 0,
     highestPain: 0,
   }));
   const byDay = new Map(days.map((day) => [day.key, day]));
   let symptomatic = 0;
 
   for (const entry of entries) {
-    if (entry.kind !== "symptom") continue;
     const day = byDay.get(entryDay(entry));
     if (!day) continue;
-    day.checkins += 1;
+    day.registrations += 1;
+    if (entry.kind !== "symptom") continue;
     day.highestPain = Math.max(day.highestPain, severityLevels.indexOf(entry.payload.pain));
     if (hasSymptoms(entry)) symptomatic += 1;
   }
 
   return {
     days,
-    checkins: days.reduce((total, day) => total + day.checkins, 0),
+    registrations: days.reduce((total, day) => total + day.registrations, 0),
     symptomatic,
   };
 }

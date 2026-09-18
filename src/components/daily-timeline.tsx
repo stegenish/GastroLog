@@ -49,7 +49,7 @@ export function DailyTimeline({ entries, today, selectedDay, onSelectDay, onAddC
         <div className="timeline-list">
           {dayEntries.map((entry) => (
             <div className="timeline-item" key={entry.id}>
-              <div className={`timeline-icon ${entry.kind}`}>{entry.kind === "symptom" ? <Activity size={17} /> : entry.kind === "meal" ? <UtensilsCrossed size={17} /> : <Waves size={17} />}</div>
+              <div className={`timeline-icon ${entry.kind}`}>{entry.kind === "symptom" ? <Activity size={17} /> : entry.kind === "food" ? <UtensilsCrossed size={17} /> : <Waves size={17} />}</div>
               <div className="timeline-body">
                 <div className="timeline-item-top"><span className="entry-type">{kindLabels[entry.kind]}</span><span className="entry-time">{new Intl.DateTimeFormat("nb-NO", { hour: "2-digit", minute: "2-digit" }).format(new Date(entry.occurredAt))}</span></div>
                 <p>{summarizeEntry(entry)}</p>

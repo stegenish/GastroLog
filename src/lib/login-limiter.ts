@@ -1,21 +1,21 @@
 const windowMs = 15 * 60_000;
-const maxFailures = 5;
+const maxAttempts = 5;
 
 export function createLoginLimiter(now: () => number = Date.now) {
-  const attempts = new Map<string, { failures: number; updatedAt: number; lockedUntil: number }>();
+  const clients = new Map<string, { attempts: number; updatedAt: number }>();
 
   return {
-    isBlocked(key: string) {
-      return (attempts.get(key)?.lockedUntil ?? 0) > now();
-    },
-    recordFailure(key: string) {
+    claim(key: string) {
       const time = now();
-      const previous = attempts.get(key);
-      const failures = previous && time - previous.updatedAt < windowMs ? previous.failures + 1 : 1;
-      attempts.set(key, { failures, updatedAt: time, lockedUntil: failures >= maxFailures ? time + windowMs : 0 });
+      const previous = clients.get(key);
+      const attempts = previous && time - previous.updatedAt < windowMs
+        ? Math.min(previous.attempts + 1, maxAttempts + 1)
+        : 1;
+      clients.set(key, { attempts, updatedAt: time });
+      return attempts <= maxAttempts;
     },
     clear(key: string) {
-      attempts.delete(key);
+      clients.delete(key);
     },
   };
 }
