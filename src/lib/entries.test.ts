@@ -15,7 +15,7 @@ describe("entry validation", () => {
   it("accepts a brief no-symptom check-in", () => {
     const entry = parseEntry(form({ kind: "symptom", occurredAt: "2026-09-16T08:30:00.000Z", pain: "none", nausea: "none", headache: "none" }), now);
     expect(entry.kind).toBe("symptom");
-    expect(summarizeEntry(entry)).toBe("Ingen symptomer");
+    expect(summarizeEntry(entry)).toBe("Ingen kvalme, magesmerter eller hodepine");
     if (entry.kind === "symptom") expect(entry.payload).toMatchObject({ vomited: false, fever: false, note: "" });
   });
 
